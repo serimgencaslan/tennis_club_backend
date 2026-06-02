@@ -3,6 +3,15 @@ from enum import Enum
 from typing import Optional, List
 from datetime import datetime
 
+class ChangePasswordSchema(BaseModel):
+    new_password: str
+
+# 🚀 Giriş yanıtı için özel şema
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    is_initial_password: bool # 👈 Frontend'in bu bilgiyi görebilmesi için buraya ekledik
+
 class GenderEnum(str, Enum):
     male = "male"
     female = "female"
@@ -14,6 +23,7 @@ class RoleEnum(str, Enum):
 class UserCreate(BaseModel):
     full_name: str
     email: EmailStr
+    phone: str  # 👈 Burası tanımlı olmalı
     password: str
     gender: GenderEnum
     category: str
@@ -27,10 +37,6 @@ class UserOut(BaseModel):
     role: RoleEnum
     class Config:
         from_attributes = True
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None

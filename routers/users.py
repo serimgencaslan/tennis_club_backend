@@ -33,7 +33,29 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         raise HTTPException(status_code=401, detail="Email veya şifre hatalı")
 
     token = auth.create_access_token(data={"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "is_initial_password": user.is_initial_password  # 🚀 Artık frontend'e ulaşacak!
+    }
+
+
+@router.post("/change-initial-password")
+def change_initial_password(
+    data: schemas.ChangePasswordSchema, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if not current_user.is_initial_password:
+        raise HTTPException(status_code=400, detail="Şifreniz zaten güncellenmiş.")
+        
+    # Yeni şifreyi hashleyip kaydediyoruz
+    current_user.hashed_password = auth.hash_password(data.new_password)
+    # 🚀 KRİTİK KISIM: Artık ilk şifrede değil, zorunluluğu kaldırıyoruz.
+    current_user.is_initial_password = False 
+    
+    db.commit()
+    return {"message": "Şifreniz başarıyla güncellendi. Artık sistemi kullanabilirsiniz."}
 
 @router.get("/me", response_model=schemas.UserOut)
 def get_me(current_user: models.User = Depends(auth.get_current_user)):

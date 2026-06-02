@@ -26,11 +26,13 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    phone = Column(String, nullable=True) # Telefon numarası için
     hashed_password = Column(String, nullable=False)
     gender = Column(Enum(GenderEnum), nullable=False)
     category = Column(String, nullable=False)
     role = Column(Enum(RoleEnum), default=RoleEnum.player)
     is_active = Column(Boolean, default=True)
+    is_initial_password = Column(Boolean, default=True, nullable=False)
     posts = relationship("MatchPost", back_populates="owner", foreign_keys="MatchPost.owner_id")
 
 class MatchPost(Base):
