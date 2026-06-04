@@ -8,8 +8,8 @@ from models import RoleEnum, GenderEnum
 def create_admin_account():
     db = SessionLocal()
     
-    admin_email = "admin@tenis.com"
-    admin_password = "admin_sifre_123"
+    admin_email = "admin@gmail.com"
+    admin_password = "123"
     admin_name = "Sistem Admin"
 
     existing_user = db.query(models.User).filter(models.User.email == admin_email).first()
@@ -24,10 +24,11 @@ def create_admin_account():
             email=admin_email,
             full_name=admin_name,
             hashed_password=hash_password(admin_password),
-            gender=GenderEnum.male, # Kendi Enum değerine göre değiştir (male/female/other)
+            gender=GenderEnum.male,
             category="A",
-            role=RoleEnum.admin, # RoleEnum.player yerine RoleEnum.admin
-            is_active=True
+            role=RoleEnum.admin,
+            is_active=True,
+            is_initial_password=False # 🚀 Bunu ekleyin ki admin şifre değiştirmeye zorlanmadan direkt paneli açabilsin
         )
         # Not: User modelinde 'points' sütunu olmadığı için buraya eklemedik.
         db.add(new_admin)
