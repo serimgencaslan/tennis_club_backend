@@ -117,9 +117,8 @@ def create_reservation(data: schemas.ReservationCreate,
         if _overlaps(data.start_time, data.end_time, r.start_time, r.end_time):
             raise HTTPException(status_code=409, detail="Bu saatlerde kort dolu.")
 
+    # 🚀 DÜZELTME: Veritabanı Enum yapısını korumak adına status değerini approved olarak eşliyoruz
     final_status = models.ReservationStatus.approved
-    if data.reservation_type == "arıza":
-        final_status = models.ReservationStatus.blocked
 
     type_label = data.reservation_type.upper()
     prefix = f"[{type_label}] "
@@ -265,6 +264,11 @@ def get_billing_report(
     LIGHTING_RATE = 200
 
     for res in reservations:
+        # 🚀 GÜNCELLEME: Özel Ders, Arıza ve Bakım kayıtları finansal hesaplamadan muaf tutuluyor
+        res_note = res.note if res.note else ""
+        if res_note.startswith("[DERS]") or res_note.startswith("[ARIZA]") or res_note.startswith("[BAKIM]"):
+            continue
+
         start = _minutes(res.start_time)
         end = _minutes(res.end_time)
         duration_hours = (end - start) / 60
@@ -284,7 +288,6 @@ def get_billing_report(
         else:
             player1 = res.user.full_name if res.user else "Bilinmeyen"
 
-        # 🚀 ADMİN FİNANSAL GÜNCELLEME: Ücretlerin oyunculara bölüştürülmesi
         if player2 == "-":
             p1_price = total_price
             p2_price = 0
@@ -301,10 +304,10 @@ def get_billing_report(
             "lighting": res.lighting_on,
             "hourly_rate": current_hourly_rate,
             "total_price": total_price,
-            "p1_price": p1_price,   # Oyuncu 1'in ödemesi gereken net tutar
-            "p2_price": p2_price,   # Oyuncu 2'nin ödemesi gereken net tutar
+            "p1_price": p1_price,   
+            "p2_price": p2_price,   
             "date": res.date,
             "time": f"{res.start_time} - {res.end_time}",
-            "type": res.note
+            "type": res_note
         })
     return report

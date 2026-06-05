@@ -95,6 +95,7 @@ class ReservationStatus(str, enum.Enum):
     approved = "approved"     # admin onayladı
     rejected = "rejected"     # admin reddetti
     cancelled = "cancelled"   # oyuncu iptal etti
+    blocked = "blocked"       # bakım/onarım
 
 class Court(Base):
     __tablename__ = "courts"

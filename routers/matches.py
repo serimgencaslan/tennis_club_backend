@@ -12,6 +12,20 @@ LEVEL_MAP = {"A": 4, "B": 3, "C": 2, "D": 1}
 BASE_WIN_POINT = 30
 BASE_LOSS_POINT = 5
 
+# ── YARDIMCI ZAMAN FONKSİYONLARI ──────────────────────────────
+
+def _minutes(t: str) -> int:
+    """Zamanı (HH:MM) dakika cinsine çevirir."""
+    try:
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+    except:
+        return 0
+
+def _overlaps(s1, e1, s2, e2) -> bool:
+    """İki zaman aralığının çakışıp çakışmadığını kontrol eder."""
+    return _minutes(s1) < _minutes(e2) and _minutes(e1) > _minutes(s2)
+
 # ── İlan endpointleri ──────────────────────────────────────────
 
 @router.post("/posts", response_model=schemas.MatchPostOut)
@@ -19,19 +33,67 @@ def create_post(post_data: schemas.MatchPostCreate, db: Session = Depends(get_db
                 current_user: models.User = Depends(get_current_user)):
     
     # Rezervasyon çakışma kontrolü
-    conflict = db.query(models.Reservation).filter(
+    existing_reservations = db.query(models.Reservation).filter(
         models.Reservation.court_id == post_data.court_id,
         models.Reservation.date == post_data.date,
-        models.Reservation.status.in_(["approved", "pending", "blocked"]),
-        models.Reservation.start_time < post_data.end_time,
-        models.Reservation.end_time > post_data.time_slot
-    ).first()
+        models.Reservation.status.in_(["approved", "pending", "blocked"])
+    ).all()
 
-    if conflict:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Seçtiğiniz saatlerde ({conflict.start_time}-{conflict.end_time}) bu kort zaten rezerve edilmiş."
+    for r in existing_reservations:
+        if _overlaps(post_data.time_slot, post_data.end_time, r.start_time, r.end_time):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Seçtiğiniz saatlerde ({r.start_time}-{r.end_time}) bu kort zaten rezerve edilmiş."
+            )
+
+    # 🚀 ADMİN ÖZEL DERS VEYA ARIZA / BAKIM AKIŞI (YENİ EKLENDİ)
+    if post_data.match_type in ["ders", "arıza"]:
+        if current_user.role != models.RoleEnum.admin:
+            raise HTTPException(status_code=403, detail="Bu işlem için admin yetkisi gerekiyor.")
+
+        # MatchPost kaydını üretiyoruz
+        post_dict = post_data.model_dump()
+        if isinstance(post_dict['category'], list):
+            post_dict['category'] = ",".join(post_dict['category'])
+
+        post_dict.pop('player1_id', None)
+        post_dict.pop('player2_id', None)
+
+        new_post = models.MatchPost(
+            **post_dict,
+            owner_id=current_user.id,
+            status=models.MatchPostStatus.matched # Ders ve arızalar doğrudan 'matched/kilitli' başlar
         )
+        if hasattr(new_post, 'reservation_type'):
+            new_post.reservation_type = post_data.match_type
+
+        db.add(new_post)
+        db.flush()
+
+        # Rezervasyon Durumunu Belirliyoruz
+        final_status = models.ReservationStatus.approved
+        if post_data.match_type == "arıza":
+            final_status = models.ReservationStatus.blocked
+
+        # Takvimde şık durması için etiket ekliyoruz
+        type_label = post_data.match_type.upper()
+        custom_note = post_data.note if post_data.note else ""
+        final_note = f"[{type_label}] {custom_note}".strip()
+
+        # 🚀 ARTIK TAKVİMDE GÖZÜKMESİ İÇİN RESERVATION KAYDINI OLUŞTURUYORUZ
+        new_res = models.Reservation(
+            court_id=post_data.court_id,
+            user_id=current_user.id,
+            date=post_data.date,
+            start_time=post_data.time_slot,
+            end_time=post_data.end_time,
+            status=final_status,
+            note=final_note
+        )
+        db.add(new_res)
+        db.commit()
+        db.refresh(new_post)
+        return new_post
 
     # KİŞİSEL MAÇ / DOĞRUDAN KORT KİRALAMA AKIŞI
     if post_data.match_type == "kişisel":
@@ -39,7 +101,6 @@ def create_post(post_data: schemas.MatchPostCreate, db: Session = Depends(get_db
         p2_id = post_data.player2_id if post_data.player2_id else None
 
         p1 = db.query(models.User).filter(models.User.id == p1_id).first()
-        court = db.query(models.Court).filter(models.Court.id == post_data.court_id).first()
         
         if not p1:
             raise HTTPException(status_code=404, detail="Ev sahibi oyuncu bulunamadı.")
@@ -162,6 +223,20 @@ def respond_to_post(post_id: int, db: Session = Depends(get_db),
     if current_user.category not in post.category.split(","):
         raise HTTPException(status_code=400, detail="Kategoriniz bu maç ilanı için uygun değil")
 
+    if post.court_id:
+        conflicts = db.query(models.Reservation).filter(
+            models.Reservation.court_id == post.court_id,
+            models.Reservation.date == post.date,
+            models.Reservation.status.in_(["approved", "pending", "blocked"])
+        ).all()
+        
+        for r in conflicts:
+            if _overlaps(post.time_slot, post.end_time, r.start_time, r.end_time):
+                raise HTTPException(
+                    status_code=409, 
+                    detail="Bu maç ilanına ait kort ve saatler maalesef başka bir rezervasyon tarafından doldurulmuş."
+                )
+
     post.opponent_id = current_user.id
     post.status = models.MatchPostStatus.matched
 
@@ -236,7 +311,6 @@ def get_all_matches_admin(db: Session = Depends(get_db), current_user: models.Us
         raise HTTPException(status_code=403, detail="Bu verileri görme yetkiniz yok.")
     return db.query(models.Match).filter(models.Match.match_type == "bahar ligi").order_by(models.Match.played_at.desc()).all()
 
-# ── 🛠️ GÜNCELLEME: REZERVASYON TABLOSUNA ENERJİ ENJEKSİYON LOGIC'I ──
 @router.post("/{match_id}/score", response_model=schemas.MatchOut)
 def submit_score(match_id: int, score: schemas.ScoreSubmit, db: Session = Depends(get_db)):
     match = db.query(models.Match).filter(models.Match.id == match_id).first()
@@ -283,10 +357,8 @@ def submit_score(match_id: int, score: schemas.ScoreSubmit, db: Session = Depend
         else:
             match.p1_points, match.p2_points = BASE_LOSS_POINT, final_win_point
 
-    # 🚀 ÇÖZÜM BURADA: Maça bağlı kort rezervasyon kaydını bulup enerji durumlarını üzerine doğrudan yazıyoruz
     reservation = db.query(models.Reservation).filter(models.Reservation.match_id == match_id).first()
     
-    # Eğer maça bağlı eşleşen rezervasyon direkt bulunamazsa, tarih, kort ve başlangıç saatine göre yedek korumalı sorgu yapıyoruz
     if not reservation:
         reservation = db.query(models.Reservation).filter(
             models.Reservation.court_id == match.court_id,
@@ -295,7 +367,6 @@ def submit_score(match_id: int, score: schemas.ScoreSubmit, db: Session = Depend
         ).first()
 
     if reservation:
-        # Pydantic şemasından veya form nesnesinden gelen boolean enerji durumlarını rezervasyon satırına geçiriyoruz
         if hasattr(score, 'heating_on') and score.heating_on is not None:
             reservation.heating_on = bool(score.heating_on)
         if hasattr(score, 'lighting_on') and score.lighting_on is not None:
