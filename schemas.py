@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr
 from enum import Enum
 from typing import Optional, List
 from datetime import datetime
+from datetime import date, time
 
 class ChangePasswordSchema(BaseModel):
     new_password: str
@@ -175,3 +176,66 @@ class AdminDirectMatchCreate(BaseModel):
     end_time: str
     match_type: str = "single"
     note: Optional[str] = None
+
+# Antrenör Giriş Şeması
+class CoachCreate(BaseModel):
+    full_name: str
+    phone: Optional[str] = None
+
+# Antrenör Çıkış Şeması
+class CoachResponse(BaseModel):
+    id: int
+    full_name: str
+    phone: Optional[str] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True  # Pydantic v2 için (v1 ise orm_mode = True)
+
+# Ders Oluşturma İstek Şeması
+class LessonCreate(BaseModel):
+    court_id: int
+    coach_id: int
+    lesson_type: str  # "bireysel" veya "grup"
+    date: date
+    start_time: time
+    end_time: time
+    note: Optional[str] = None
+    student_ids: List[int]  # Derse katılacak öğrencilerin ID listesi
+
+# Ders Listeleme Çıkış Şeması
+class LessonResponse(BaseModel):
+    id: int
+    court_id: int
+    coach_id: int
+    lesson_type: str
+    date: date
+    start_time: time
+    end_time: time
+    note: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# 🚀 GÜNCELLEME: Admin tarafından öğrenci eklenirken frontend'den gelen istek şeması
+class UserCreateByAdmin(BaseModel):
+    full_name: str
+    email: EmailStr
+    phone: Optional[str] = ""
+    category: str
+    gender: GenderEnum
+
+# schemas.py içerisine eklenecek:
+class AttendanceRecord(BaseModel):
+    student_id: int
+    status: str
+
+class AttendanceSubmit(BaseModel):
+    lesson_id: int
+    records: list[AttendanceRecord]
+
+# schemas.py dosyasının en altına eklenecek:
+
+class FeeUpdate(BaseModel):
+    fee_type: str # "bireysel" veya "grup"
+    amount: float

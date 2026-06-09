@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Enum, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Enum, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -127,3 +127,66 @@ class Reservation(Base):
     
     heating_on = Column(Boolean, default=False)
     lighting_on = Column(Boolean, default=False)
+
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Time, Boolean, Table
+from database import Base
+
+# Grup derslerinde birden fazla öğrenci olabileceği için Many-to-Many ara tablosu
+lesson_students = Table(
+    "lesson_students",
+    Base.metadata,
+    Column("lesson_id", Integer, ForeignKey("lessons.id", ondelete="CASCADE")),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"))
+)
+
+class Coach(Base):
+    __tablename__ = "coaches"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    
+    lessons = relationship("Lesson", back_populates="coach")
+
+class Lesson(Base):
+    __tablename__ = "lessons"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    court_id = Column(Integer, ForeignKey("courts.id", ondelete="CASCADE"))
+    coach_id = Column(Integer, ForeignKey("coaches.id", ondelete="CASCADE"))
+    lesson_type = Column(String, nullable=False) # "bireysel" veya "grup"
+    date = Column(Date, nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    note = Column(String, nullable=True)
+    
+    # İlişkiler
+    coach = relationship("Coach", back_populates="lessons")
+    court = relationship("Court") # Kort bilgisi için
+    students = relationship("User", secondary=lesson_students)
+
+# models.py dosyasının en altına eklenecek alan:
+
+class Attendance(Base):
+    __tablename__ = "attendances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    # "attended" (Geldi) veya "absent" (Gelmedi) değerlerini tutacak sütun
+    status = Column(String, nullable=False, default="pending") 
+
+    # Opsiyonel: İlişkileri kurarak sorguları kolaylaştırmak isterseniz (Hata verirse eklemeyebilirsiniz)
+    lesson = relationship("Lesson", backref="attendance_records")
+    student = relationship("User")
+
+# models.py dosyasının en altına eklenecek:
+
+class LessonFee(Base):
+    __tablename__ = "lesson_fees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fee_type = Column(String, unique=True, nullable=False) # "bireysel" veya "grup"
+    amount = Column(Float, nullable=False, default=0.0) # Ders başına (veya grup için kişi başı) ücret
