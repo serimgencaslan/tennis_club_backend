@@ -190,3 +190,29 @@ class LessonFee(Base):
     id = Column(Integer, primary_key=True, index=True)
     fee_type = Column(String, unique=True, nullable=False) # "bireysel" veya "grup"
     amount = Column(Float, nullable=False, default=0.0) # Ders başına (veya grup için kişi başı) ücret
+
+# models.py dosyasının en altına ekleyin ve backend'i restart edin:
+
+class Tournament(Base):
+    __tablename__ = "tournaments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    tournament_type = Column(String, nullable=False)  # "league" veya "group"
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    status = Column(String, default="active")  # "active", "completed", "cancelled"
+
+    # Kategorilere ait özel kural tanımları ilişkisi
+    rules = relationship("TournamentRule", back_populates="tournament", cascade="all, delete-orphan")
+
+class TournamentRule(Base):
+    __tablename__ = "tournament_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    category_name = Column(String, nullable=False)  # "Erkek A", "Kadın B" vb.
+    max_participants = Column(Integer, nullable=False, default=16)
+    promoted_count = Column(Integer, nullable=True, default=2)  # Üst tura çıkacak kişi sayısı (Lig/Grup için)
+
+    tournament = relationship("Tournament", back_populates="rules")

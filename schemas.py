@@ -239,3 +239,15 @@ class AttendanceSubmit(BaseModel):
 class FeeUpdate(BaseModel):
     fee_type: str # "bireysel" veya "grup"
     amount: float
+    
+class TournamentRuleCreate(BaseModel):
+    category_name: str
+    max_participants: int
+    promoted_count: int
+
+class TournamentCreate(BaseModel):
+    name: str
+    tournament_type: str  # "league" veya "group"
+    start_date: date
+    end_date: date
+    categories: List[TournamentRuleCreate]
